@@ -103,4 +103,9 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  int ticks;                   // alarm interval
+  uint64 handler;              // alarm handler
+  int tickspassed;             // 自上次调用handler过去了几个时钟周期    
+  struct trapframe *alarm_trapframe; //保存alarm调用时用户程序恢复执行需要的上下文   
+  int trapped;                 // 防止kernel在前一个handler未完成时再次调用handler
 };

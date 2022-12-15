@@ -69,6 +69,7 @@ sys_sleep(void)
     }
     sleep(&ticks, &tickslock);
   }
+  backtrace();
   release(&tickslock);
   return 0;
 }
@@ -94,4 +95,33 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+uint64
+sys_sigalarm(void)
+{
+  int ticks = 0;
+  uint64 handler = 0;
+
+  if(argint(0, &ticks) < 0 || argaddr(1, &handler) < 0)
+    return -1;
+
+  myproc()->ticks = ticks;
+  myproc()->handler = handler;
+  myproc()->tickspassed = 0;
+  myproc()->trapped = 0;
+
+  return 0;
+}
+
+uint64
+sys_sigreturn(void)
+{
+  //恢复用户程序的上下文
+  if (myproc()->trapped)
+  {
+    memmove(myproc()->trapframe, myproc()->alarm_trapframe, sizeof(struct trapframe));
+    myproc()->trapped = 0;
+  }
+  return 0;
 }

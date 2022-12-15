@@ -121,6 +121,7 @@ panic(char *s)
   printf("panic: ");
   printf(s);
   printf("\n");
+  backtrace();
   panicked = 1; // freeze uart output from other CPUs
   for(;;)
     ;
@@ -131,4 +132,20 @@ printfinit(void)
 {
   initlock(&pr.lock, "pr");
   pr.locking = 1;
+}
+
+void
+backtrace(void)
+{
+  printf("backtrace:\n");
+  //获取当前帧指针及所处的页表最大地址
+  uint64 fp = r_fp();
+  uint64 top = PGROUNDUP(fp);
+
+  //根据栈帧的结构，依次打印返回地址
+  while(fp < top)
+  {
+    printf("%p\n", *((uint64*)(fp-8)));
+    fp = *((uint64*)(fp-16));
+  }
 }
