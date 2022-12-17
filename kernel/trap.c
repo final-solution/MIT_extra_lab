@@ -29,6 +29,36 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+//执行懒分配
+//returns 0 if success,
+//-1 if failed.
+int
+lazy_allocation(struct proc* p)
+{
+  //定位缺页错误发生地址  
+  uint64 faultaddr = r_stval();
+  uint64 start = PGROUNDDOWN(faultaddr);
+
+  //缺页错误发生地址是否合法
+  if(faultaddr >= p->sz || faultaddr < p->trapframe->sp)
+    return -1;
+
+  //分配物理内存
+  char* new = kalloc();
+
+  if (new == 0)
+    return -1;
+  
+  //分配成功则映射到用户页表
+  memset(new, 0, PGSIZE);
+  if(mappages(p->pagetable, start, PGSIZE, (uint64)new, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+    kfree(new);
+    return -1;
+  }
+
+  return 0;
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -65,6 +95,9 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if(r_scause() == 13 || r_scause() == 15){
+    if (lazy_allocation(p) != 0)
+      p->killed = 1;
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
@@ -217,4 +250,3 @@ devintr()
     return 0;
   }
 }
-
