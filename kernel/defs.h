@@ -63,6 +63,8 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+void            change_refs(uint64, int);
+uint64          get_refs(uint64);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -171,6 +173,7 @@ uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
+int             copy_on_write(pagetable_t, uint64);
 
 // plic.c
 void            plicinit(void);
@@ -185,3 +188,8 @@ void            virtio_disk_intr(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+// 页表引用次数数组的最大索引
+#define INDEX_MAX ((PHYSTOP - KERNBASE) >> 12)
+// 获取物理内存在页表引用次数数组中的索引
+#define INDEX(pa) ((pa - KERNBASE) >> 12)

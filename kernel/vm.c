@@ -311,7 +311,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -319,14 +318,15 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+
+    //pte权限置为不可写及cow页
+    *pte &= ~PTE_W; 
+    *pte |= PTE_RSW;
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
       goto err;
     }
+    change_refs(pa, 1);
   }
   return 0;
 
@@ -358,9 +358,12 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
+
+    //单独处理内核遇到的cow页
+    if(copy_on_write(pagetable, va0) != 0)
       return -1;
+
+    pa0 = walkaddr(pagetable, va0);
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
@@ -439,4 +442,41 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+// 缺页错误发生时，执行Copy-on-write
+// returns 0 if success,
+// -1 if failed.
+int
+copy_on_write(pagetable_t p, uint64 va)
+{
+  if(va >= MAXVA)
+    return -1;  
+  uint64 cow_page = PGROUNDDOWN(va);
+  pte_t* pte = walk(p, cow_page, 0);
+
+  //判断当前pte是否合法(有效且是cow页)
+  if (pte == 0 || !(*pte & PTE_V) || !(*pte & PTE_U))
+    return -1;
+  if (*pte & PTE_W)
+    return 0;
+  if (!(*pte & PTE_RSW))
+    return -1;
+  
+  char* new = kalloc();
+  if(new == 0)
+    return -1;
+
+  uint64 pa = PTE2PA(*pte);
+  uint64 flags = PTE_FLAGS(*pte);
+
+  //将父进程内存复制到子进程内存中
+  memmove(new, (void*)pa, PGSIZE);
+  kfree((void*)pa);
+
+  //设置子进程内存页的权限
+  flags |= PTE_W;
+  flags &= ~PTE_RSW;
+  *pte = PA2PTE((uint64)new) | flags;
+  return 0;
 }
